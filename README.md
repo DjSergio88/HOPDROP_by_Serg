@@ -1,33 +1,33 @@
 # HopDrop
 
-Send very large files (10 GB, 12 GB, more) between your own devices. Two ways to use it:
+Send big files (up to 12 GB per file by default) to anyone, on any device or network. Upload, share the link, the file is deleted after 7 days.
 
-## 1. Website (`index.html`): device to device, from anywhere
+- `public/index.html`: upload page (resumable, 32 MB parts, 3 in parallel)
+- `public/download.html`: what people see when they open a link (`/d/<id>`)
+- `public/direct.html`: optional device-to-device mode (WebRTC, nothing stored)
+- `src/worker.js`: Cloudflare Worker with the API; files are stored in Cloudflare R2
+- `hopdrop.py`: local script for phone-to-PC on the same Wi-Fi (no internet needed)
+- `wrangler.toml`: Cloudflare configuration
 
-A static page that sends files **directly** from one browser to another over WebRTC. Nothing is uploaded to a server, so there is no size limit and nothing to pay for.
+## Deploy (one time)
 
-1. On the sending device (e.g. your phone) open the site and choose your files.
-2. Open the link (or scan the QR code / type the 6-letter code) on the receiving device.
-3. On the receiver, click **Download** on a file and pick where to save it.
+1. **Cloudflare account** (free): https://dash.cloudflare.com. Go to **R2 Object Storage** and enable it (a payment card is required, the free tier covers the first 10 GB).
+2. **Create the bucket** named `hopdrop-files`.
+3. **7-day expiry**: open the bucket, **Settings → Object lifecycle rules → Add rule**, delete objects after **7 days**. (The Worker also refuses expired files and deletes them on access.)
+4. **Upload this project to GitHub** (replace the old files in your repo).
+5. **Connect GitHub to Cloudflare**: **Workers & Pages → Create → Import a repository** → pick `HOPDROP_by_Serg` → deploy. Every push to `main` then redeploys automatically. The site is live at `https://hopdrop.<your-account>.workers.dev`.
+6. **Your own address**: register `hopdrop.io` (or any domain), add it to Cloudflare, then in the Worker open **Settings → Domains & Routes → Add → Custom domain**.
 
-Notes
-- Both devices must stay online with the page open until the transfer ends. If the connection drops, click Download again (no resume yet).
-- For files over ~1.5 GB, receive with **Chrome or Edge on a computer**. They stream straight to disk. Other browsers can't write huge files without running out of memory.
-- Sending works from any modern phone or computer browser.
-- Some strict networks (certain mobile carriers, corporate Wi-Fi) block direct connections. If two devices can't connect, try the same Wi-Fi or use the local script below.
-- The free PeerJS cloud server is used only to introduce the two devices to each other. File data never goes through it.
+Change the size limit in `wrangler.toml` (`MAX_BYTES`).
 
-### Hosting it (free, GitHub Pages)
-Repo **Settings → Pages → Build and deployment → Deploy from a branch → `main` / `(root)` → Save**.
-The site will be at `https://djsergio88.github.io/HOPDROP_by_Serg/`.
+## Running a public upload site: things to know
 
-## 2. Local script (`hopdrop.py`): phone to PC on the same Wi-Fi
+- Anyone can upload, so you pay for the storage and you are responsible for what is hosted. Add Cloudflare **Rate limiting rules** or **Turnstile** if abuse appears, and keep an address where people can report content.
+- Downloads are always served as attachments (never rendered in the browser) to avoid hosting phishing pages.
 
-Fast, resumable, PIN-protected receiver for your PC. Needs only Python 3.
+## Local script
 
 ```
 python hopdrop.py                 # saves to Downloads\HopDrop
 python hopdrop.py --max-gb 20 --dir D:\Transfers --port 9000
 ```
-
-Open the printed address on your phone, enter the PIN, pick files. Interrupted uploads continue where they stopped.

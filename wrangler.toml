@@ -1,0 +1,22 @@
+name = "hopdrop"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+
+# Static website (upload page, download page)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# File storage. Create this bucket first: Cloudflare dashboard -> R2 -> Create bucket -> hopdrop-files
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "hopdrop-files"
+
+[vars]
+# Largest file allowed, in bytes. 12 GB = 12884901888. Raise it if you like (20 GB = 21474836480).
+MAX_BYTES = "12884901888"
+
+# After you own the domain and added it to Cloudflare, uncomment:
+# [[routes]]
+# pattern = "hopdrop.io"
+# custom_domain = true

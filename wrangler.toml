@@ -14,7 +14,7 @@ bucket_name = "hopdrop-files"
 
 [vars]
 # Largest file allowed, in bytes. 12 GB = 12884901888. Raise it if you like (20 GB = 21474836480).
-MAX_BYTES = "12884901888"
+MAX_BYTES = "10737418240"
 
 # After you own the domain and added it to Cloudflare, uncomment:
 # [[routes]]

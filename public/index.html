@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HopDrop — send big files, get a link</title>
+<meta name="description" content="Send files up to 12 GB to anyone, on any device or network. Upload, share the link. Files are deleted after 7 days.">
+<style>
+:root{--bg:#0d1017;--card:#161a23;--line:#262c3a;--fg:#e9ecf3;--mut:#8f98ad;--acc:#5b8cff;--acc2:#8a6bff;--ok:#3ccf8e;--err:#ff6370}
+@media (prefers-color-scheme:light){:root{--bg:#f3f5fa;--card:#fff;--line:#dfe3ee;--fg:#141824;--mut:#667089}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:20px 16px 48px}
+main{max-width:620px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;margin:6px 0 4px}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;color:#fff;font-weight:800}
+h1{font-size:26px;margin:0;letter-spacing:-.3px}
+.tag{color:var(--mut);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:40px 12px;text-align:center;cursor:pointer;transition:border-color .15s}
+.drop:hover,.drop.over{border-color:var(--acc)}
+.drop b{display:block;font-size:20px}
+.drop span{color:var(--mut);font-size:14px}
+button{appearance:none;border:0;border-radius:10px;padding:10px 15px;font:600 15px system-ui;background:var(--acc);color:#fff;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+button.danger{background:transparent;border:1px solid var(--line);color:var(--err)}
+.top{display:flex;justify-content:space-between;gap:10px}
+.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.mut{color:var(--mut);font-size:14px;white-space:nowrap}
+.bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+.msg{font-size:13px;color:var(--mut);margin-top:4px;min-height:19px}
+.err .msg{color:var(--err)}
+.done .bar i{background:var(--ok)}
+.link{display:flex;gap:8px;margin-top:12px}
+.link input{flex:1;min-width:0;padding:11px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);font:14px ui-monospace,Consolas,monospace}
+.qr{display:flex;justify-content:center;margin:14px 0 4px}
+.qr svg{width:150px;height:150px;background:#fff;padding:8px;border-radius:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center;margin-top:6px}
+.feat div{font-size:13px;color:var(--mut)}
+.feat b{display:block;color:var(--fg);font-size:16px}
+footer{color:var(--mut);font-size:13px;margin-top:22px;text-align:center}
+footer a{color:inherit}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<header><div class="logo">H</div><h1>HopDrop</h1></header>
+<p class="tag">Send big files to anyone, on any device or network. Upload, then share the link.</p>
+
+<div class="card">
+  <div class="drop" id="drop"><b>Choose files or drop them here</b><span id="limit">Up to 12 GB per file · free · no account</span></div>
+  <input id="picker" type="file" multiple hidden>
+  <div class="feat" style="margin-top:16px">
+    <div><b id="fMax">12 GB</b>per file</div>
+    <div><b>7 days</b>then deleted</div>
+    <div><b>Any device</b>phone, PC, Mac</div>
+  </div>
+</div>
+
+<div id="list"></div>
+
+<footer>
+  Uploads resume automatically if your connection drops. Keep this tab open while uploading.<br>
+  Please only share files you have the right to share.<br>
+  <a href="/direct.html">Direct device-to-device mode</a> · <a href="https://github.com/DjSergio88/HOPDROP_by_Serg">GitHub</a>
+</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" onerror="void 0"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const CONC = 3;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const fmt = n => n >= 1073741824 ? (n / 1073741824).toFixed(2) + ' GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let MAX = 12 * 1073741824;
+let wake = null, active = 0;
+
+fetch('/api/config').then(r => r.json()).then(c => {
+  MAX = c.maxBytes;
+  const g = (MAX / 1073741824);
+  $('#limit').textContent = 'Up to ' + g + ' GB per file · free · no account';
+  $('#fMax').textContent = g + ' GB';
+}).catch(() => {});
+
+async function keepAwake() { try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && active) keepAwake(); });
+window.addEventListener('beforeunload', e => { if (active) { e.preventDefault(); e.returnValue = ''; } });
+
+// --- resume state is kept in this browser only ---
+const loadState = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+const saveState = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const clearState = k => { try { localStorage.removeItem(k); } catch (e) {} };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) { const e = new Error(j.error || ('Server error ' + r.status)); e.status = r.status; throw e; }
+  return j;
+}
+
+function putPart(st, n, blob, onprog) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', '/api/upload/part?id=' + st.id + '&uploadId=' + encodeURIComponent(st.uploadId) + '&n=' + n);
+    x.upload.onprogress = e => onprog(e.loaded);
+    x.onload = () => {
+      let j = {}; try { j = JSON.parse(x.responseText); } catch (e) {}
+      if (x.status === 200 && j.etag) return res(j.etag);
+      const e = new Error(j.error || ('Server error ' + x.status)); e.status = x.status; rej(e);
+    };
+    x.onerror = () => rej(Object.assign(new Error('Connection lost'), { status: 0 }));
+    x.send(blob);
+  });
+}
+
+async function attempt(file, ui) {
+  const rk = 'hd:' + file.name + ':' + file.size + ':' + file.lastModified;
+  let st = loadState(rk);
+  if (st && st.expires < Date.now()) st = null;
+  if (!st) {
+    const c = await api('/api/upload/create', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: file.name, size: file.size, type: file.type }) });
+    st = { id: c.id, uploadId: c.uploadId, partSize: c.partSize, expires: c.expires, deleteToken: c.deleteToken, parts: {} };
+    saveState(rk, st);
+  }
+  const ps = st.partSize, total = Math.ceil(file.size / ps);
+  const partLen = n => Math.min(n * ps, file.size) - (n - 1) * ps;
+  const inflight = {};
+  let doneBytes = 0;
+  const todo = [];
+  for (let n = 1; n <= total; n++) { if (st.parts[n]) doneBytes += partLen(n); else todo.push(n); }
+  const startBytes = doneBytes, t0 = performance.now();
+  let fatal = null, lastUi = 0;
+
+  const tick = () => {
+    const now = performance.now();
+    if (now - lastUi < 200) return;
+    lastUi = now;
+    const cur = doneBytes + Object.values(inflight).reduce((a, b) => a + b, 0);
+    ui.progress(cur, (cur - startBytes) / Math.max(0.5, (now - t0) / 1000));
+  };
+
+  async function worker() {
+    while (todo.length && !fatal) {
+      const n = todo.shift();
+      const s = (n - 1) * ps, e = s + partLen(n);
+      for (let a = 0; ; a++) {
+        try {
+          inflight[n] = 0;
+          const etag = await putPart(st, n, file.slice(s, e), l => { inflight[n] = l; tick(); });
+          delete inflight[n];
+          st.parts[n] = etag; doneBytes += e - s; saveState(rk, st); tick();
+          break;
+        } catch (err) {
+          delete inflight[n];
+          if ([400, 404, 413].includes(err.status) || a >= 10) { fatal = err; return; }
+          ui.msg('Connection problem, retrying…');
+          await sleep(Math.min(1000 * (a + 1), 8000));
+        }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONC, todo.length) }, worker));
+  if (fatal) { if (fatal.status === 404) { clearState(rk); fatal.restart = true; } throw fatal; }
+
+  ui.progress(file.size, 0);
+  ui.msg('Finishing…');
+  const parts = Object.entries(st.parts).map(([n, etag]) => ({ n: +n, etag })).sort((a, b) => a.n - b.n);
+  const done = await api('/api/upload/complete', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: st.id, uploadId: st.uploadId, parts }) });
+  clearState(rk);
+  return { id: done.id, expires: done.expires, token: st.deleteToken };
+}
+
+function addFile(file) {
+  const box = document.createElement('div');
+  box.className = 'card';
+  box.innerHTML = '<div class="top"><span class="name"></span><span class="mut"></span></div><div class="bar"><i></i></div><div class="msg">Waiting…</div>';
+  box.querySelector('.name').textContent = file.name;
+  box.querySelector('.mut').textContent = fmt(file.size);
+  $('#list').prepend(box);
+  const bar = box.querySelector('.bar i'), msg = box.querySelector('.msg');
+  const ui = {
+    msg: t => { msg.textContent = t; },
+    progress: (done, speed) => {
+      bar.style.width = (done / file.size * 100) + '%';
+      msg.textContent = fmt(done) + ' of ' + fmt(file.size) + (speed ? ' · ' + fmt(speed) + '/s' : '');
+    },
+  };
+  if (file.size === 0) { box.classList.add('err'); ui.msg('Empty files can’t be sent'); return Promise.resolve(); }
+  if (file.size > MAX) { box.classList.add('err'); ui.msg('Too large (limit ' + fmt(MAX) + ')'); return Promise.resolve(); }
+  return run(file, box, ui);
+}
+
+let chain = Promise.resolve();
+function run(file, box, ui) {
+  chain = chain.then(async () => {
+    active++; keepAwake();
+    try {
+      ui.msg('Starting…');
+      let res;
+      try { res = await attempt(file, ui); }
+      catch (e) { if (e.restart) { ui.msg('Restarting upload…'); res = await attempt(file, ui); } else throw e; }
+      finished(box, file, res);
+    } catch (e) {
+      box.classList.add('err'); ui.msg('Failed: ' + (e.message || e) + ' — drop the file again to resume.');
+    } finally {
+      active--; if (!active) { try { wake && wake.release(); } catch (e) {} }
+    }
+  });
+  return chain;
+}
+
+function finished(box, file, res) {
+  const link = location.origin + '/d/' + res.id;
+  const exp = new Date(res.expires).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  box.classList.add('done');
+  box.innerHTML = '<div class="top"><span class="name">' + esc(file.name) + '</span><span class="mut">' + fmt(file.size) + '</span></div>' +
+    '<div class="bar"><i style="width:100%"></i></div>' +
+    '<div class="msg" style="color:var(--ok)">Ready. Share this link. Expires ' + esc(exp) + '</div>' +
+    '<div class="link"><input readonly value="' + esc(link) + '"><button class="copy">Copy</button></div>' +
+    '<div class="qr"></div>' +
+    '<div class="row"><button class="ghost share hide">Share…</button><button class="danger del">Delete now</button></div>';
+  const input = box.querySelector('input');
+  input.onfocus = () => input.select();
+  box.querySelector('.copy').onclick = async e => {
+    try { await navigator.clipboard.writeText(link); e.target.textContent = 'Copied'; } catch (err) { input.select(); }
+    setTimeout(() => e.target.textContent = 'Copy', 1500);
+  };
+  try {
+    if (typeof qrcode !== 'undefined') { const q = qrcode(0, 'M'); q.addData(link); q.make(); box.querySelector('.qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); }
+  } catch (e) {}
+  if (navigator.share) { const b = box.querySelector('.share'); b.classList.remove('hide'); b.onclick = () => navigator.share({ title: file.name, url: link }).catch(() => {}); }
+  box.querySelector('.del').onclick = async e => {
+    if (!confirm('Delete this file now? The link will stop working.')) return;
+    try { await api('/api/file/' + res.id + '?token=' + encodeURIComponent(res.token), { method: 'DELETE' }); box.remove(); }
+    catch (err) { e.target.textContent = 'Delete failed'; }
+  };
+}
+
+const add = list => { for (const f of list) addFile(f); };
+$('#drop').onclick = () => $('#picker').click();
+$('#picker').onchange = e => { add(e.target.files); e.target.value = ''; };
+['dragover', 'dragenter'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); $('#drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); $('#drop').classList.remove('over'); }));
+document.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) add(e.dataTransfer.files); });
+})();
+</script>
+</body>
+</html>

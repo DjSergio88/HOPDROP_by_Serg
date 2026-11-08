@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>HopDrop download</title>
+<style>
+:root{--bg:#0d1017;--card:#161a23;--line:#262c3a;--fg:#e9ecf3;--mut:#8f98ad;--acc:#5b8cff;--acc2:#8a6bff;--err:#ff6370}
+@media (prefers-color-scheme:light){:root{--bg:#f3f5fa;--card:#fff;--line:#dfe3ee;--fg:#141824;--mut:#667089}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:20px 16px 48px}
+main{max-width:520px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;margin:6px 0 18px}
+header a{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;color:#fff;font-weight:800}
+h1{font-size:24px;margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;text-align:center}
+.name{font-size:19px;font-weight:700;word-break:break-word;margin:4px 0}
+.mut{color:var(--mut);font-size:14px}
+.btn{display:inline-block;margin-top:18px;padding:14px 28px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-weight:700;font-size:17px;text-decoration:none}
+.err{color:var(--err)}
+a.home{display:inline-block;margin-top:16px;color:var(--acc)}
+</style>
+</head>
+<body>
+<main>
+<header><a href="/"><div class="logo">H</div><h1>HopDrop</h1></a></header>
+<div class="card" id="box"><div class="mut">Loading…</div></div>
+<script>
+(function () {
+  const box = document.getElementById('box');
+  const id = (location.pathname.match(/\/d\/([a-z2-9]{12})/) || [])[1];
+  const fmt = n => n >= 1073741824 ? (n / 1073741824).toFixed(2) + ' GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function fail(msg) { box.innerHTML = '<div class="name err">' + esc(msg) + '</div><div class="mut">The link may be wrong, or the file was deleted or expired (files last 7 days).</div><a class="home" href="/">Send a file</a>'; }
+  if (!id) return fail('Link not valid');
+  fetch('/api/file/' + id).then(async r => {
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return fail(j.error || 'File not found');
+    const left = j.expires - Date.now();
+    const days = Math.floor(left / 86400000), hrs = Math.floor(left % 86400000 / 3600000);
+    box.innerHTML = '<div class="mut">Someone sent you a file</div><div class="name">' + esc(j.name) + '</div><div class="mut">' + fmt(j.size) +
+      ' · expires in ' + (days > 0 ? days + ' day' + (days > 1 ? 's ' : ' ') : '') + hrs + ' h</div>' +
+      '<a class="btn" href="/api/dl/' + id + '" download>Download</a>' +
+      '<div class="mut" style="margin-top:14px">The download starts in your browser and saves straight to your device.</div>';
+  }).catch(() => fail('Could not reach the server'));
+})();
+</script>
+</main>
+</body>
+</html>

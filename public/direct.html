@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HopDrop — send huge files, straight to another device</title>
+<title>HopDrop Direct — device to device</title>
 <meta name="description" content="Send files of 10 GB, 12 GB or more directly between two devices. No upload to a server, no size limit.">
 <style>
 :root{--bg:#0d1017;--card:#161a23;--line:#262c3a;--fg:#e9ecf3;--mut:#8f98ad;--acc:#5b8cff;--acc2:#8a6bff;--ok:#3ccf8e;--err:#ff6370}
@@ -96,7 +96,7 @@ footer{color:var(--mut);font-size:13px;margin-top:22px;text-align:center}
   <div class="card hide" id="recvList"></div>
 </section>
 
-<footer>
+<footer><a href="/" style="color:inherit">← HopDrop home (upload &amp; get a link)</a><br>
   Files go directly between the two devices (encrypted WebRTC). Both must stay online during the transfer.
   <br>Open source · <a href="https://github.com/DjSergio88/HOPDROP_by_Serg" style="color:inherit">DjSergio88/HOPDROP_by_Serg</a>
 </footer>
@@ -329,22 +329,29 @@ function startReceiver(code) {
   }
 
   async function makeSink(f) {
+    // 1) save straight to disk (Chrome/Edge on computers). If the browser refuses, fall through.
     if (canStream) {
-      const ext = (f.name.match(/\.[A-Za-z0-9]{1,8}$/) || [''])[0];
-      const h = await showSaveFilePicker({ suggestedName: f.name });
-      const w = await h.createWritable();
-      return { write: b => w.write(b), close: () => w.close(), abort: () => w.abort().catch(() => {}) };
+      try {
+        const h = await showSaveFilePicker({ suggestedName: f.name });
+        const w = await h.createWritable();
+        return { write: b => w.write(b), close: () => w.close(), abort: () => w.abort().catch(() => {}) };
+      } catch (e) { if (e && e.name === 'AbortError') throw e; }
     }
+    // 2) browser-private storage, then offered as a normal download
     if (canOPFS) {
-      const root = await navigator.storage.getDirectory();
-      const h = await root.getFileHandle('hopdrop-' + Date.now(), { create: true });
-      const w = await h.createWritable();
-      return {
-        write: b => w.write(b),
-        close: async () => { await w.close(); const file = await h.getFile(); saveBlob(file, f.name); },
-        abort: () => w.abort().catch(() => {})
-      };
+      try {
+        const root = await navigator.storage.getDirectory();
+        const h = await root.getFileHandle('hopdrop-' + Date.now(), { create: true });
+        const w = await h.createWritable();
+        return {
+          write: b => w.write(b),
+          close: async () => { await w.close(); const file = await h.getFile(); saveBlob(file, f.name); },
+          abort: () => w.abort().catch(() => {})
+        };
+      } catch (e) {}
     }
+    // 3) memory (small files only)
+    if (f.size > MEM_LIMIT) throw new Error('this browser cannot save files this big. Use the main HopDrop page (upload + link) instead.');
     const parts = [];
     return { write: b => { parts.push(b); }, close: () => saveBlob(new Blob(parts), f.name), abort: () => { parts.length = 0; } };
   }

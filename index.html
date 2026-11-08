@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HopDrop — send huge files, straight to another device</title>
+<meta name="description" content="Send files of 10 GB, 12 GB or more directly between two devices. No upload to a server, no size limit.">
+<style>
+:root{--bg:#0d1017;--card:#161a23;--line:#262c3a;--fg:#e9ecf3;--mut:#8f98ad;--acc:#5b8cff;--acc2:#8a6bff;--ok:#3ccf8e;--err:#ff6370}
+@media (prefers-color-scheme:light){:root{--bg:#f3f5fa;--card:#fff;--line:#dfe3ee;--fg:#141824;--mut:#667089}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;padding:20px 16px 48px}
+main{max-width:620px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;margin:6px 0 4px}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;color:#fff;font-weight:800}
+h1{font-size:24px;margin:0;letter-spacing:-.3px}
+.tag{color:var(--mut);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:34px 12px;text-align:center;cursor:pointer;transition:border-color .15s}
+.drop:hover,.drop.over{border-color:var(--acc)}
+.drop b{display:block;font-size:19px}
+.drop span{color:var(--mut);font-size:14px}
+button,.btn{appearance:none;border:0;border-radius:10px;padding:11px 16px;font:600 15px system-ui;background:var(--acc);color:#fff;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+button:disabled{opacity:.5;cursor:default}
+.link{display:flex;gap:8px;margin-top:10px}
+.link input{flex:1;min-width:0;padding:11px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);font:14px ui-monospace,Consolas,monospace}
+.code{font:700 30px ui-monospace,Consolas,monospace;letter-spacing:6px;text-align:center;margin:6px 0}
+.mut{color:var(--mut);font-size:14px}
+#qr{display:flex;justify-content:center;margin:12px 0}
+#qr svg,#qr img{width:168px;height:168px;background:#fff;padding:8px;border-radius:10px}
+.file{padding:12px 0;border-top:1px solid var(--line)}
+.file:first-child{border-top:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+.file.done .bar i{background:var(--ok)}
+.msg{font-size:13px;color:var(--mut);margin-top:4px;min-height:19px}
+.file.err .msg{color:var(--err)}
+.status{display:flex;align-items:center;gap:8px;font-size:14px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mut)}
+.dot.on{background:var(--ok)}.dot.wait{background:#f5b94a}
+.warn{background:rgba(255,99,112,.1);border:1px solid var(--err);color:var(--err);border-radius:12px;padding:12px;font-size:14px;margin-bottom:14px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+details{margin-top:6px}
+summary{cursor:pointer;color:var(--mut);font-size:14px}
+footer{color:var(--mut);font-size:13px;margin-top:22px;text-align:center}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<header><div class="logo">H</div><h1>HopDrop</h1></header>
+<p class="tag">Send files of 10&nbsp;GB, 12&nbsp;GB or more straight from one device to another. Nothing is uploaded to a server.</p>
+
+<div id="warn" class="warn hide"></div>
+
+<!-- ============ SEND ============ -->
+<section id="send">
+  <div class="card">
+    <div class="drop" id="drop"><b>Choose files to send</b><span>tap here, or drop files on this page</span></div>
+    <input id="picker" type="file" multiple hidden>
+  </div>
+
+  <div class="card hide" id="shareCard">
+    <div class="status"><span class="dot wait" id="sdot"></span><span id="sstatus">Getting your link ready…</span></div>
+    <div id="shareBody" class="hide">
+      <div class="mut" style="margin-top:12px">Open this link on the receiving device:</div>
+      <div class="link"><input id="shareLink" readonly><button id="copy">Copy</button></div>
+      <div id="qr"></div>
+      <div class="mut" style="text-align:center">or open this page there and enter the code</div>
+      <div class="code" id="code">------</div>
+    </div>
+    <div class="mut" style="margin-top:10px">Keep this page open and your screen awake until the transfer is finished.</div>
+  </div>
+
+  <div class="card hide" id="sendList"></div>
+
+  <div class="card">
+    <div class="row">
+      <span class="mut">Receiving instead?</span>
+      <input id="joinCode" placeholder="Enter code" maxlength="8" autocomplete="off" style="padding:9px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);width:130px;text-transform:uppercase;font:600 15px ui-monospace,Consolas,monospace">
+      <button class="ghost" id="join">Connect</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RECEIVE ============ -->
+<section id="recv" class="hide">
+  <div class="card">
+    <div class="status"><span class="dot wait" id="rdot"></span><span id="rstatus">Connecting…</span></div>
+    <div class="mut" id="rhint" style="margin-top:8px"></div>
+  </div>
+  <div class="card hide" id="recvList"></div>
+</section>
+
+<footer>
+  Files go directly between the two devices (encrypted WebRTC). Both must stay online during the transfer.
+  <br>Open source · <a href="https://github.com/DjSergio88/HOPDROP_by_Serg" style="color:inherit">DjSergio88/HOPDROP_by_Serg</a>
+</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" onerror="void 0"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const PIECE = 64 * 1024;            // size of each message on the data channel
+const BLOCK = 4 * 1024 * 1024;      // how much of a file is read from disk at a time
+const HIGH  = 6 * 1024 * 1024;      // pause sending when this much is queued
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PREFIX = 'hopdrop-';
+const MEM_LIMIT = 1.5 * 1024 * 1024 * 1024; // fallback when the browser can't stream to disk
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const fmt = n => n >= 1073741824 ? (n / 1073741824).toFixed(2) + ' GB'
+              : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
+              : Math.max(1, Math.round(n / 1024)) + ' KB';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const randCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ALPHABET[b % 32]).join('');
+
+let wake = null;
+async function keepAwake() { try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && wake) keepAwake(); });
+
+function showWarn(msg) { const w = $('#warn'); w.textContent = msg; w.classList.remove('hide'); }
+function setStatus(prefix, state, text) { $('#' + prefix + 'dot').className = 'dot ' + state; $('#' + prefix + 'status').textContent = text; }
+
+if (typeof Peer === 'undefined') {
+  showWarn('Could not load the connection library. Check your internet connection and reload the page.');
+  return;
+}
+
+const hashCode = () => (location.hash || '').replace('#', '').trim().toUpperCase();
+
+/* ------------------------------------------------------------------ */
+/*  SENDER                                                              */
+/* ------------------------------------------------------------------ */
+function startSender() {
+  const files = [];
+  let peer = null, conn = null, code = null, busy = false;
+
+  $('#drop').onclick = () => $('#picker').click();
+  $('#picker').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+  ['dragover', 'dragenter'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); $('#drop').classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); $('#drop').classList.remove('over'); }));
+  document.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+  $('#join').onclick = () => { const c = $('#joinCode').value.trim().toUpperCase(); if (c) { location.hash = c; location.reload(); } };
+  $('#copy').onclick = async () => {
+    try { await navigator.clipboard.writeText($('#shareLink').value); $('#copy').textContent = 'Copied'; }
+    catch (e) { $('#shareLink').select(); }
+    setTimeout(() => $('#copy').textContent = 'Copy', 1500);
+  };
+
+  function addFiles(list) {
+    for (const f of list) files.push({ file: f, id: files.length, sent: 0, state: 'ready' });
+    renderList();
+    if (!peer) openRoom(); else announce();
+  }
+
+  function renderList() {
+    const box = $('#sendList');
+    box.classList.toggle('hide', !files.length);
+    box.innerHTML = files.map((f, i) => `
+      <div class="file ${f.state === 'done' ? 'done' : ''} ${f.state === 'err' ? 'err' : ''}" id="sf${i}">
+        <div class="top"><span class="name">${esc(f.file.name)}</span><span class="mut">${fmt(f.file.size)}</span></div>
+        <div class="bar"><i style="width:${f.file.size ? f.sent / f.file.size * 100 : (f.state === 'done' ? 100 : 0)}%"></i></div>
+        <div class="msg">${f.msg || (f.state === 'ready' ? 'Waiting for the receiver' : '')}</div>
+      </div>`).join('');
+  }
+  function updateFile(i, msg) {
+    const f = files[i], el = $('#sf' + i);
+    if (!el) return;
+    el.querySelector('.bar i').style.width = (f.file.size ? f.sent / f.file.size * 100 : 100) + '%';
+    el.querySelector('.msg').textContent = msg;
+    el.className = 'file ' + (f.state === 'done' ? 'done' : f.state === 'err' ? 'err' : '');
+  }
+
+  function openRoom(attempt = 0) {
+    $('#shareCard').classList.remove('hide');
+    code = randCode();
+    peer = new Peer(PREFIX + code);
+    peer.on('open', () => {
+      const url = location.origin + location.pathname + '#' + code;
+      $('#shareLink').value = url;
+      $('#code').textContent = code;
+      $('#shareBody').classList.remove('hide');
+      drawQR(url);
+      setStatus('s', 'wait', 'Waiting for the other device to connect…');
+      keepAwake();
+    });
+    peer.on('connection', c => {
+      if (conn && conn.open) { try { conn.close(); } catch (e) {} }
+      conn = c;
+      c.on('open', () => { setStatus('s', 'on', 'Connected to the receiver'); announce(); });
+      c.on('data', onSenderData);
+      c.on('close', () => { setStatus('s', 'wait', 'Receiver disconnected. Waiting for it to reconnect…'); busy = false; });
+      c.on('error', () => setStatus('s', 'wait', 'Connection problem. Waiting for the receiver…'));
+    });
+    peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+    peer.on('error', err => {
+      if (err.type === 'unavailable-id' && attempt < 5) { peer.destroy(); peer = null; return openRoom(attempt + 1); }
+      setStatus('s', 'wait', 'Connection service problem (' + err.type + '). Reload the page and try again.');
+    });
+  }
+
+  function drawQR(url) {
+    const box = $('#qr'); box.innerHTML = '';
+    try {
+      if (typeof qrcode === 'undefined') return;
+      const q = qrcode(0, 'M'); q.addData(url); q.make();
+      box.innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    } catch (e) {}
+  }
+
+  function announce() {
+    if (!conn || !conn.open) return;
+    conn.send(JSON.stringify({ t: 'list', files: files.map((f, i) => ({ i, name: f.file.name, size: f.file.size })) }));
+  }
+
+  async function onSenderData(d) {
+    if (typeof d !== 'string') return;
+    let m; try { m = JSON.parse(d); } catch (e) { return; }
+    if (m.t === 'get' && files[m.i] && !busy) {
+      busy = true;
+      try { await sendFile(m.i); } catch (e) { const f = files[m.i]; f.state = 'err'; f.msg = 'Stopped: ' + (e.message || e); renderList(); }
+      busy = false;
+    }
+  }
+
+  async function waitDrain() {
+    const dc = conn.dataChannel;
+    while (conn.open && (dc.bufferedAmount > HIGH || conn.bufferSize > 0)) await sleep(4);
+    if (!conn.open) throw new Error('receiver disconnected');
+  }
+
+  async function sendFile(i) {
+    const f = files[i], file = f.file;
+    f.state = 'sending'; f.sent = 0; renderList();
+    conn.send(JSON.stringify({ t: 'start', i, name: file.name, size: file.size }));
+    const t0 = performance.now();
+    let lastUi = 0;
+    for (let off = 0; off < file.size; off += BLOCK) {
+      const buf = new Uint8Array(await file.slice(off, Math.min(off + BLOCK, file.size)).arrayBuffer());
+      for (let p = 0; p < buf.length; p += PIECE) {
+        await waitDrain();
+        conn.send(buf.subarray(p, Math.min(p + PIECE, buf.length)));
+        f.sent = off + Math.min(p + PIECE, buf.length);
+      }
+      const now = performance.now();
+      if (now - lastUi > 250) {
+        lastUi = now;
+        updateFile(i, fmt(f.sent) + ' of ' + fmt(file.size) + ' · ' + fmt(f.sent / ((now - t0) / 1000)) + '/s');
+      }
+    }
+    await waitDrain();
+    while (conn.dataChannel.bufferedAmount > 0) await sleep(20);   // let the last bytes leave
+    conn.send(JSON.stringify({ t: 'end', i }));
+    f.state = 'done'; f.sent = file.size; f.msg = 'Sent ✓';
+    renderList();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  RECEIVER                                                            */
+/* ------------------------------------------------------------------ */
+function startReceiver(code) {
+  $('#send').classList.add('hide');
+  $('#recv').classList.remove('hide');
+
+  const canStream = 'showSaveFilePicker' in window;
+  const canOPFS = !!(navigator.storage && navigator.storage.getDirectory && window.FileSystemFileHandle && FileSystemFileHandle.prototype.createWritable);
+  if (canStream) $('#rhint').textContent = 'Click Download on a file, choose where to save it, and it streams straight to your disk.';
+  else if (canOPFS) $('#rhint').textContent = 'Click Download on a file. It is stored in the browser while it arrives, then offered as a download.';
+  else $('#rhint').textContent = 'This browser cannot stream big files to disk. Files over ' + fmt(MEM_LIMIT) + ' need Chrome or Edge on a computer.';
+
+  let list = [], cur = null, writeChain = Promise.resolve(), connected = false;
+  const peer = new Peer();
+  let conn = null;
+
+  peer.on('open', connect);
+  peer.on('error', err => {
+    if (err.type === 'peer-unavailable') setStatus('r', 'wait', 'Could not find that sender. Check the code, and make sure the sender page is still open.');
+    else setStatus('r', 'wait', 'Connection problem (' + err.type + ').');
+  });
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+
+  function connect() {
+    setStatus('r', 'wait', 'Connecting to sender ' + code + '…');
+    conn = peer.connect(PREFIX + code, { serialization: 'raw', reliable: true });
+    conn.on('open', () => { connected = true; setStatus('r', 'on', 'Connected. Waiting for the file list…'); keepAwake(); });
+    conn.on('data', onData);
+    conn.on('close', () => {
+      setStatus('r', 'wait', 'Disconnected from sender.');
+      if (cur) { setMsg(cur.i, 'Connection lost. Click Download to try again.', true); abortCurrent(); }
+    });
+    conn.on('error', () => setStatus('r', 'wait', 'Connection problem.'));
+    setTimeout(() => { if (!connected) setStatus('r', 'wait', 'Still connecting… If this stays here, the two devices may be on networks that block direct connections.'); }, 12000);
+  }
+
+  function renderList() {
+    const box = $('#recvList');
+    box.classList.remove('hide');
+    box.innerHTML = list.map(f => `
+      <div class="file" id="rf${f.i}">
+        <div class="top"><span class="name">${esc(f.name)}</span><span class="mut">${fmt(f.size)}</span>
+          <button data-i="${f.i}" ${cur ? 'disabled' : ''}>Download</button></div>
+        <div class="bar"><i style="width:0"></i></div>
+        <div class="msg"></div>
+      </div>`).join('');
+    box.querySelectorAll('button').forEach(b => b.onclick = () => download(+b.dataset.i));
+  }
+  function setMsg(i, text, err) { const el = $('#rf' + i); if (!el) return; el.querySelector('.msg').textContent = text; el.classList.toggle('err', !!err); }
+  function setBar(i, pct, done) { const el = $('#rf' + i); if (!el) return; el.querySelector('.bar i').style.width = pct + '%'; el.classList.toggle('done', !!done); }
+  function setButtons(disabled) { document.querySelectorAll('#recvList button').forEach(b => b.disabled = disabled); }
+
+  async function download(i) {
+    const f = list[i];
+    if (!canStream && !canOPFS && f.size > MEM_LIMIT) { setMsg(i, 'Too big for this browser. Open this page in Chrome or Edge on a computer.', true); return; }
+    let sink;
+    try { sink = await makeSink(f); } catch (e) { if (e && e.name === 'AbortError') return; setMsg(i, 'Cannot save: ' + (e.message || e), true); return; }
+    cur = { i, sink, got: 0, size: f.size, t0: performance.now(), lastUi: 0 };
+    setButtons(true);
+    setMsg(i, 'Starting…');
+    conn.send(JSON.stringify({ t: 'get', i }));
+  }
+
+  async function makeSink(f) {
+    if (canStream) {
+      const ext = (f.name.match(/\.[A-Za-z0-9]{1,8}$/) || [''])[0];
+      const h = await showSaveFilePicker({ suggestedName: f.name });
+      const w = await h.createWritable();
+      return { write: b => w.write(b), close: () => w.close(), abort: () => w.abort().catch(() => {}) };
+    }
+    if (canOPFS) {
+      const root = await navigator.storage.getDirectory();
+      const h = await root.getFileHandle('hopdrop-' + Date.now(), { create: true });
+      const w = await h.createWritable();
+      return {
+        write: b => w.write(b),
+        close: async () => { await w.close(); const file = await h.getFile(); saveBlob(file, f.name); },
+        abort: () => w.abort().catch(() => {})
+      };
+    }
+    const parts = [];
+    return { write: b => { parts.push(b); }, close: () => saveBlob(new Blob(parts), f.name), abort: () => { parts.length = 0; } };
+  }
+
+  function saveBlob(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  }
+
+  function abortCurrent() { if (!cur) return; try { cur.sink.abort(); } catch (e) {} cur = null; setButtons(false); }
+
+  function onData(d) {
+    if (typeof d === 'string') {
+      let m; try { m = JSON.parse(d); } catch (e) { return; }
+      if (m.t === 'list') { list = m.files; if (!cur) { setStatus('r', 'on', 'Connected. ' + list.length + ' file(s) ready.'); renderList(); } }
+      else if (m.t === 'end' && cur) finish();
+      return;
+    }
+    if (!cur) return;
+    const chunk = d instanceof ArrayBuffer ? d : (d.buffer ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d);
+    const len = chunk.byteLength !== undefined ? chunk.byteLength : chunk.size;
+    const c = cur;
+    c.got += len;
+    writeChain = writeChain.then(() => c.sink.write(chunk)).catch(e => { setMsg(c.i, 'Write failed: ' + (e.message || e), true); });
+    const now = performance.now();
+    if (now - c.lastUi > 250) {
+      c.lastUi = now;
+      setBar(c.i, c.size ? c.got / c.size * 100 : 100);
+      setMsg(c.i, fmt(c.got) + ' of ' + fmt(c.size) + ' · ' + fmt(c.got / ((now - c.t0) / 1000)) + '/s');
+    }
+  }
+
+  async function finish() {
+    const c = cur;
+    try {
+      await writeChain;
+      if (c.got !== c.size) throw new Error('size mismatch (' + fmt(c.got) + ' of ' + fmt(c.size) + ')');
+      await c.sink.close();
+      setBar(c.i, 100, true);
+      setMsg(c.i, 'Saved ✓ ' + fmt(c.size));
+    } catch (e) {
+      setMsg(c.i, 'Failed: ' + (e.message || e), true);
+      try { c.sink.abort(); } catch (_) {}
+    }
+    cur = null; writeChain = Promise.resolve();
+    setButtons(false);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+const c = hashCode();
+if (c) startReceiver(c); else startSender();
+window.addEventListener('hashchange', () => location.reload());
+})();
+</script>
+</body>
+</html>
